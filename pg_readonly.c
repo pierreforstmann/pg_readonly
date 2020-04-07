@@ -20,20 +20,209 @@
 #include "tcop/utility.h"
 #include "utils/guc.h"
 #include "utils/snapmgr.h"
+#include "utils/memutils.h"
+#include "storage/ipc.h"
+#include "storage/spin.h"
+#include "miscadmin.h"
 
 PG_MODULE_MAGIC;
 
-static bool pgro_is_enabled = true;
+
+/*
+ *
+ * Global shared state
+ * 
+ */
+typedef struct pgroSharedState
+{
+	LWLock	   	*lock;			/* self protection */
+	bool		cluster_is_readonly;	/* cluster read-only global flag */
+	slock_t		mutex;			/* self protection */
+} pgroSharedState;
+
 
 /* Saved hook values in case of unload */
-post_parse_analyze_hook_type prev_post_parse_analyze_hook = NULL;
+static post_parse_analyze_hook_type prev_post_parse_analyze_hook = NULL;
+static shmem_startup_hook_type prev_shmem_startup_hook = NULL;
+
+/* Links to shared memory state */
+static pgroSharedState *pgro= NULL;
 
 /*---- Function declarations ----*/
 
 void		_PG_init(void);
 void		_PG_fini(void);
 
+static void pgro_shmem_startup(void);
+static void pgro_shmem_shutdown(int code, Datum arg);
 static void pgro_main(ParseState *pstate, Query *query);
+
+static bool pgro_set_readonly_internal();
+static bool pgro_unset_readonly_internal();
+static bool pgro_get_readonly_internal();
+
+PG_FUNCTION_INFO_V1(pgro_set_readonly);
+PG_FUNCTION_INFO_V1(pgro_unset_readonly);
+PG_FUNCTION_INFO_V1(pgro_get_readonly);
+
+/*
+ * set cluster databases to read-only
+ */
+
+static bool pgro_set_readonly_internal()
+{
+	pgro->cluster_is_readonly = true;
+	return true;
+}
+
+
+/*
+ * set cluster databases to read write
+ */
+
+static bool pgro_unset_readonly_internal()
+{
+	pgro->cluster_is_readonly = false;
+	return true;
+}
+
+
+/*
+ * set cluster databases to read-only
+ */
+
+static bool pgro_get_readonly_internal()
+{
+	return pgro->cluster_is_readonly; 
+}
+
+/*
+ * set cluster databases to read-only
+ */
+Datum pgro_set_readonly(PG_FUNCTION_ARGS)
+{
+	elog(DEBUG5, "pg_readonly: pgro_set_readonly: entry");
+	elog(DEBUG5, "pg_readonly: pgro_set_readonly: exit");
+	PG_RETURN_BOOL(pgro_set_readonly_internal());
+}
+
+/*
+ * set cluster databases to read-write
+ */
+Datum pgro_unset_readonly(PG_FUNCTION_ARGS)
+{
+	elog(DEBUG5, "pg_readonly: pgro_unset_readonly: entry");
+	elog(DEBUG5, "pg_readonly: pgro_unset_readonly: exit");
+	PG_RETURN_BOOL(pgro_unset_readonly_internal());
+
+}
+
+/*
+ * get cluster databases status 
+ */
+Datum pgro_get_readonly(PG_FUNCTION_ARGS)
+{
+	elog(DEBUG5, "pg_readonly: pgro_get_readonly: entry");
+	elog(DEBUG5, "pg_readonly: pgro_get_readonly: exit");
+	PG_RETURN_BOOL(pgro_get_readonly_internal());
+
+}
+
+/*
+ ** Estimate shared memory space needed.
+ *
+ **/
+static Size
+pgro_memsize(void)
+{
+	Size		size;
+
+	size = MAXALIGN(sizeof(pgroSharedState));
+
+	return size;
+}
+
+
+/*
+ * shmem_startup hook: allocate or attach to shared memory.
+ *
+ */
+static void
+pgro_shmem_startup(void)
+{
+	bool		found;
+
+
+	elog(DEBUG5, "pg_readonly: pgro_shmem_startup: entry");
+
+	if (prev_shmem_startup_hook)
+		prev_shmem_startup_hook();
+
+	/* reset in case this is a restart within the postmaster */
+	pgro = NULL;
+
+
+	/*
+ 	** Create or attach to the shared memory state
+ 	**/
+	LWLockAcquire(AddinShmemInitLock, LW_EXCLUSIVE);
+
+	pgro = ShmemInitStruct("pg_readonly",
+			        sizeof(pgroSharedState),
+			        &found);
+
+	if (!found)
+	{
+		/* First time through ... */
+		pgro->lock = &(GetNamedLWLockTranche("pg_readonly"))->lock;
+		pgro->cluster_is_readonly = false;
+		SpinLockInit(&pgro->mutex);
+	}
+
+	LWLockRelease(AddinShmemInitLock);
+
+	/*
+         * If we're in the postmaster (or a standalone backend...), set up a shmem
+         * exit hook (no current need ???) 
+         */ 
+        if (!IsUnderPostmaster)
+		on_shmem_exit(pgro_shmem_shutdown, (Datum) 0);
+
+	/*
+  	 * Done if some other process already completed our initialization.
+  	 */
+	if (found)
+		return;
+
+	elog(DEBUG5, "pg_readonly: pgro_shmem_startup: exit");
+
+}
+
+/*
+ *
+ *  shmem_shutdown hook
+ *   
+ *  Note: we don't bother with acquiring lock, because there should be no
+ *  other processes running when this is called.
+ */
+static void
+pgro_shmem_shutdown(int code, Datum arg)
+{
+	elog(DEBUG5, "pg_readonly: pgro_shmem_shutdown: entry");
+
+	/* Don't do anything during a crash. */
+	if (code)
+		return;
+
+	/* Safety check ... shouldn't get here unless shmem is set up. */
+	if (!pgro)
+		return;
+	
+	/* currently: no action */
+
+	elog(DEBUG5, "pg_readonly: pgro_shmem_shutdown: exit");
+}
+
 
 /*
  * Module load callback
@@ -43,11 +232,28 @@ _PG_init(void)
 {
 	elog(DEBUG5, "pg_readonly: _PG_init(): entry");
 
-	pgro_is_enabled = true;
-	ereport(LOG, (errmsg("pg_readonly:_PG_init(): pg_readonly is enabled")));
+
+	elog(LOG, "pg_readonly:_PG_init(): pg_readonly extension is enabled");
+
+	/*
+ 	** Request additional shared resources.  (These are no-ops if we're not in
+ 	** the postmaster process.)  We'll allocate or attach to the shared
+ 	** resources in pgro_shmem_startup().
+	**/
+
+	RequestAddinShmemSpace(pgro_memsize());
+	RequestNamedLWLockTranche("pg_readonly", 1);
+
+	/*
+ 	** Install hooks
+	*/
+
+	prev_shmem_startup_hook = shmem_startup_hook;
+	shmem_startup_hook = pgro_shmem_startup;
 	prev_post_parse_analyze_hook = post_parse_analyze_hook;
 	post_parse_analyze_hook = pgro_main;
 		
+
 	elog(DEBUG5, "pg_readonly: _PG_init(): exit");
 }
 
@@ -59,7 +265,11 @@ void
 _PG_fini(void)
 {
 	elog(DEBUG5, "pg_readonly: _PG_fini(): entry");
+
+	/* Uninstall hooks. */
+	shmem_startup_hook = prev_shmem_startup_hook;
 	post_parse_analyze_hook = prev_post_parse_analyze_hook;
+
 	elog(DEBUG5, "pg_readonly: _PG_fini(): exit");
 }
 
@@ -120,8 +330,8 @@ pgro_main(ParseState *pstate, Query *query)
 			break;
 	  
 	}
-	ereport(DEBUG1, (errmsg("pg_readonly: pgro_main: query->commandType=%s", kw)));
-	ereport(DEBUG1, (errmsg("pg_readonly: pgro_main: command_is_ro=%d", command_is_ro)));
+	elog(DEBUG1, "pg_readonly: pgro_main: query->commandType=%s", kw);
+	elog(DEBUG1, "pg_readonly: pgro_main: command_is_ro=%d", command_is_ro);
 
 	if (query->commandType == CMD_UTILITY)
 	{
@@ -155,11 +365,11 @@ pgro_main(ParseState *pstate, Query *query)
 				stmt = otherstmt;
 				break;
 		}
-		ereport(DEBUG1, (errmsg("pg_readonly: pgro_main: query->UtilityStmt=%s", stmt)));
-		ereport(DEBUG1, (errmsg("pg_readonly: pgro_main: command_is_ro=%d", command_is_ro)));
+		elog(DEBUG1, "pg_readonly: pgro_main: query->UtilityStmt=%s", stmt);
+		elog(DEBUG1, "pg_readonly: pgro_main: command_is_ro=%d", command_is_ro);
 	}
 
-	if (!command_is_ro)
+	if (pgro_get_readonly_internal() == true && command_is_ro == false)
 		ereport(ERROR, (errmsg("pg_readonly: invalid statement because cluster is read-only")));
 			
 
