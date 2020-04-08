@@ -37,7 +37,6 @@ typedef struct pgroSharedState
 {
 	LWLock	   	*lock;			/* self protection */
 	bool		cluster_is_readonly;	/* cluster read-only global flag */
-	slock_t		mutex;			/* self protection */
 } pgroSharedState;
 
 
@@ -71,7 +70,9 @@ PG_FUNCTION_INFO_V1(pgro_get_readonly);
 
 static bool pgro_set_readonly_internal()
 {
+	LWLockAcquire(pgro->lock, LW_EXCLUSIVE);
 	pgro->cluster_is_readonly = true;
+	LWLockRelease(pgro->lock);
 	return true;
 }
 
@@ -82,18 +83,26 @@ static bool pgro_set_readonly_internal()
 
 static bool pgro_unset_readonly_internal()
 {
+	LWLockAcquire(pgro->lock, LW_EXCLUSIVE);
 	pgro->cluster_is_readonly = false;
+	LWLockRelease(pgro->lock);
 	return true;
 }
 
 
 /*
- * set cluster databases to read-only
+ * get cluster databases read-only or
+ * read-write status
  */
 
 static bool pgro_get_readonly_internal()
 {
-	return pgro->cluster_is_readonly; 
+	bool val;
+
+	LWLockAcquire(pgro->lock, LW_SHARED);
+	val = pgro->cluster_is_readonly; 
+	LWLockRelease(pgro->lock);
+	return val;
 }
 
 /*
@@ -176,7 +185,6 @@ pgro_shmem_startup(void)
 		/* First time through ... */
 		pgro->lock = &(GetNamedLWLockTranche("pg_readonly"))->lock;
 		pgro->cluster_is_readonly = false;
-		SpinLockInit(&pgro->mutex);
 	}
 
 	LWLockRelease(AddinShmemInitLock);
