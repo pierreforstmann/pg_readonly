@@ -24,6 +24,7 @@
 #include "storage/ipc.h"
 #include "storage/spin.h"
 #include "miscadmin.h"
+#include "storage/procarray.h"
 
 PG_MODULE_MAGIC;
 
@@ -70,6 +71,36 @@ PG_FUNCTION_INFO_V1(pgro_get_readonly);
 
 static bool pgro_set_readonly_internal()
 {
+
+	VirtualTransactionId *tvxid;
+	TransactionId limitXmin = InvalidTransactionId;
+	bool excludeXmin0 = false;
+	bool allDbs = true;
+	int excludeVacuum = 0;
+	int nvxids;
+	int i;
+	pid_t pid;
+
+	elog(LOG, "pg_readonly: killing all transactions ...");
+	tvxid = GetCurrentVirtualXIDs(
+                 limitXmin,
+	         excludeXmin0, 
+                 allDbs, 
+                 excludeVacuum,
+	         &nvxids);
+	for (i=0; i < nvxids; i++)
+	{
+		/*
+                 * No adequate ProcSignalReason found
+                 */
+		pid = CancelVirtualTransaction(
+			tvxid[i],
+                        PROCSIG_RECOVERY_CONFLICT_SNAPSHOT);
+ 		elog(LOG, "pg_readonly: PID %d signalled", pid);
+	}
+ 	elog(LOG, "pg_readonly: ... done.");
+
+
 	LWLockAcquire(pgro->lock, LW_EXCLUSIVE);
 	pgro->cluster_is_readonly = true;
 	LWLockRelease(pgro->lock);
@@ -329,6 +360,20 @@ pgro_main(ParseState *pstate, Query *query)
 			break;
 		case CMD_UTILITY:
 			kw = utkw;
+			/*
+                         * allow ROLLBACK
+                         * for killed transactions
+                         */
+			if (
+                              strstr((pstate->p_sourcetext), "rollback")
+					|| 
+                              strstr((pstate->p_sourcetext), "ROLLBACK")
+                           )
+			{
+				elog(DEBUG1, "pg_readonly: pgro_main: query->querySource=%s",
+                                     pstate->p_sourcetext);
+				command_is_ro = true;
+			}
 			break;
 		case CMD_NOTHING:
 			kw = nokw;
