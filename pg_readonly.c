@@ -21,6 +21,13 @@
 #include "utils/guc.h"
 #include "utils/snapmgr.h"
 #include "utils/memutils.h"
+#if PG_VERSION_NUM <= 90600
+#include "storage/lwlock.h"
+#endif
+#if PG_VERSION_NUM < 120000 
+#include "access/transam.h"
+#endif
+
 #include "storage/ipc.h"
 #include "storage/spin.h"
 #include "miscadmin.h"
@@ -39,7 +46,6 @@ typedef struct pgroSharedState
 	LWLock	   	*lock;			/* self protection */
 	bool		cluster_is_readonly;	/* cluster read-only global flag */
 } pgroSharedState;
-
 
 /* Saved hook values in case of unload */
 static post_parse_analyze_hook_type prev_post_parse_analyze_hook = NULL;
@@ -192,7 +198,6 @@ pgro_shmem_startup(void)
 {
 	bool		found;
 
-
 	elog(DEBUG5, "pg_readonly: pgro_shmem_startup: entry");
 
 	if (prev_shmem_startup_hook)
@@ -214,7 +219,13 @@ pgro_shmem_startup(void)
 	if (!found)
 	{
 		/* First time through ... */
+#if PG_VERSION_NUM <= 90600
+		RequestAddinLWLocks(1);
+		pgro->lock = LWLockAssign();
+#else
 		pgro->lock = &(GetNamedLWLockTranche("pg_readonly"))->lock;
+#endif
+	
 		pgro->cluster_is_readonly = false;
 	}
 
@@ -269,6 +280,8 @@ pgro_shmem_shutdown(int code, Datum arg)
 void
 _PG_init(void)
 {
+
+	
 	elog(DEBUG5, "pg_readonly: _PG_init(): entry");
 
 
@@ -279,10 +292,10 @@ _PG_init(void)
  	** the postmaster process.)  We'll allocate or attach to the shared
  	** resources in pgro_shmem_startup().
 	**/
-
 	RequestAddinShmemSpace(pgro_memsize());
+#if PG_VERSION_NUM >= 90600
 	RequestNamedLWLockTranche("pg_readonly", 1);
-
+#endif
 	/*
  	** Install hooks
 	*/
