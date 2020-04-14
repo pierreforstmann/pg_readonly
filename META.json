@@ -19,7 +19,7 @@
       }
    },
    "provides": {
-     "pg_queryid": {
+     "pg_readonly": {
          "abstract": "set all cluster databases in read only",
          "file": "pg_readonly.c",
          "docfile": "README.md",
