@@ -14,10 +14,10 @@ This module can be built using the standard PGXS infrastructure. For this to wor
 
 ## PostgreSQL setup
 
-Extension can be loaded:
-
-At server level with `shared_preload_libraries` parameter: <br> 
+Extension must be loaded at server level with `shared_preload_libraries` parameter: <br> 
 `shared_preload_libraries = 'pg_readonly'` <br>
+and it must be created with following SQL statement at server level:<br>
+`create extension pg_readonly;` <br>
 
 
 ## Usage
