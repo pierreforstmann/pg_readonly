@@ -69,7 +69,7 @@ To set the cluster on read-write, call the function unset_cluster_readonly:
 ` t`<br>
 `(1 row)`<br>
 
-The cluster is now read-write and any DML or DDL statement is allowed:
+The cluster is now read-write and any DML or DDL statement is allowed:<br>
 `# update t set x=33 where y='abc';`<br>
 `UPDATE 1`<br>
 `# select * from t;`<br>
