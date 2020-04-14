@@ -39,12 +39,12 @@ To query the cluster status, call the function get_cluster_readonly which return
 ` f`<br>
 `(1 row)`<br>
 
-To set the cluster read-only, call the function set_cluster_readonly:
-`# select * from t;`<br>
-` x  |  y  `<br>
-`----+-----`<br>
-` 32 | abc`<br>
-`(1 row)`<br>
+To set the cluster read-only, call the function set_cluster_readonly:<br>
+`# select set_cluster_readonly();`<br>
+` set_cluster_readonly ` <br>
+`----------------------` <br>
+` t` <br>
+`(1 row)`
 
 The cluster is now read-only and only SELECT statements are allowed:
 
