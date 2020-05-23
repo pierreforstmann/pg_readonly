@@ -503,5 +503,6 @@ pgro_exec(QueryDesc *queryDesc, int eflags)
 
 	if (prev_executor_start_hook)
                 (*prev_executor_start_hook)(queryDesc, eflags);
+	else	standard_ExecutorStart(queryDesc, eflags);
 
 }
