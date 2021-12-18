@@ -68,7 +68,11 @@ void		_PG_fini(void);
 
 static void pgro_shmem_startup(void);
 static void pgro_shmem_shutdown(int code, Datum arg);
+#if PG_VERSION_NUM < 140000
+static void pgro_main(ParseState *pstate, Query *query);
+#else
 static void pgro_main(ParseState *pstate, Query *query, JumbleState *jstate);
+#endif
 static void pgro_exec(QueryDesc *queryDesc, int eflags);
 
 static bool pgro_set_readonly_internal();
@@ -344,7 +348,7 @@ _PG_fini(void)
  */
 
 static void
-#if PG_VERSION_NUM <= 130000
+#if PG_VERSION_NUM < 140000
 pgro_main(ParseState *pstate, Query *query)
 #else
 pgro_main(ParseState *pstate, Query *query, JumbleState *jstate)
@@ -460,7 +464,7 @@ pgro_main(ParseState *pstate, Query *query, JumbleState *jstate)
 			
 
 	if (prev_post_parse_analyze_hook)
-#if PG_VERSION_NUM <= 130000
+#if PG_VERSION_NUM <= 140000
 		(*prev_post_parse_analyze_hook)(pstate, query);	
 #else
 		(*prev_post_parse_analyze_hook)(pstate, query, jstate);	
