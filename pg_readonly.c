@@ -68,7 +68,7 @@ void		_PG_fini(void);
 
 static void pgro_shmem_startup(void);
 static void pgro_shmem_shutdown(int code, Datum arg);
-static void pgro_main(ParseState *pstate, Query *query);
+static void pgro_main(ParseState *pstate, Query *query, JumbleState *jstate);
 static void pgro_exec(QueryDesc *queryDesc, int eflags);
 
 static bool pgro_set_readonly_internal();
@@ -344,7 +344,11 @@ _PG_fini(void)
  */
 
 static void
+#if PG_VERSION_NUM <= 130000
 pgro_main(ParseState *pstate, Query *query)
+#else
+pgro_main(ParseState *pstate, Query *query, JumbleState *jstate)
+#endif
 {
 
 	char	*sekw = "SELECT";
@@ -456,7 +460,11 @@ pgro_main(ParseState *pstate, Query *query)
 			
 
 	if (prev_post_parse_analyze_hook)
+#if PG_VERSION_NUM <= 130000
 		(*prev_post_parse_analyze_hook)(pstate, query);	
+#else
+		(*prev_post_parse_analyze_hook)(pstate, query, jstate);	
+#endif
 	/* no "standard" call for else branch */
 
 	elog(DEBUG5, "pg_readonly: pgro_main: exit");
