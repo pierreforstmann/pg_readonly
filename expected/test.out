@@ -1,0 +1,88 @@
+--
+-- test.sql
+--
+create extension pg_readonly;
+--
+select get_cluster_readonly();
+ get_cluster_readonly 
+----------------------
+ f
+(1 row)
+
+select unset_cluster_readonly();
+ unset_cluster_readonly 
+------------------------
+ t
+(1 row)
+
+--
+drop table t;
+ERROR:  table "t" does not exist
+drop function f;
+ERROR:  could not find a function named "f"
+--
+create table t(i int);
+create function f(IN p int, OUT i int) returns int as $$
+begin
+    insert into t(i) values (f.p) returning t.i into f.i;
+end$$
+language plpgsql;
+select set_cluster_readonly();
+ set_cluster_readonly 
+----------------------
+ t
+(1 row)
+
+select * from t;
+ i 
+---
+(0 rows)
+
+insert into t values (1);
+ERROR:  pg_readonly: pgro_main: invalid statement because cluster is read-only
+select f(1);
+ERROR:  pg_readonly: pgro_main: invalid statement because cluster is read-only
+CONTEXT:  SQL statement "insert into t(i) values (f.p) returning t.i"
+PL/pgSQL function f(integer) line 3 at SQL statement
+-- However, in this same session, if you call f() before entering in read only mode, 
+-- it is then able to write during read only mode:
+select unset_cluster_readonly();
+ unset_cluster_readonly 
+------------------------
+ t
+(1 row)
+
+select f(1);
+ f 
+---
+ 1
+(1 row)
+
+select set_cluster_readonly();
+ set_cluster_readonly 
+----------------------
+ t
+(1 row)
+
+insert into t values (2);
+ERROR:  pg_readonly: pgro_main: invalid statement because cluster is read-only
+select f(2);
+ERROR:  pg_readonly: pgro_exec: invalid statement because cluster is read-only
+CONTEXT:  SQL statement "insert into t(i) values (f.p) returning t.i"
+PL/pgSQL function f(integer) line 3 at SQL statement
+select get_cluster_readonly();
+ get_cluster_readonly 
+----------------------
+ t
+(1 row)
+
+select f(3);
+ERROR:  pg_readonly: pgro_exec: invalid statement because cluster is read-only
+CONTEXT:  SQL statement "insert into t(i) values (f.p) returning t.i"
+PL/pgSQL function f(integer) line 3 at SQL statement
+select * from t;
+ i 
+---
+ 1
+(1 row)
+
