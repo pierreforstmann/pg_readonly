@@ -1,5 +1,5 @@
 # pg_readonly postgresql extension
 comment = 'cluster database read only'
-default_version = '0.0.1'
+default_version = '1.0.0'
 module_pathname = '$libdir/pg_readonly'
 relocatable = false
