@@ -61,6 +61,8 @@ static ExecutorStart_hook_type prev_executor_start_hook = NULL;
 /* Links to shared memory state */
 static pgroSharedState *pgro= NULL;
 
+static bool pgro_enabled = false;
+
 /*---- Function declarations ----*/
 
 void		_PG_init(void);
@@ -296,11 +298,25 @@ void
 _PG_init(void)
 {
 
+	const char *shared_preload_libraries_config;
+        char *pg_readonly;
 	
 	elog(DEBUG5, "pg_readonly: _PG_init(): entry");
 
+	shared_preload_libraries_config = GetConfigOption("shared_preload_libraries", true, false);
+	pg_readonly = strstr(shared_preload_libraries_config, "pg_readonly");
+	if (pg_readonly == NULL)
+	{
+		ereport(WARNING, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                                  errmsg("pg_readonly: pg_readonly is not loaded")));
+		pgro_enabled = false;
+	}
+	else
+		pgro_enabled = true;
 
-	elog(LOG, "pg_readonly:_PG_init(): pg_readonly extension is enabled");
+	if (pgro_enabled)
+		elog(LOG, "pg_readonly:_PG_init(): pg_readonly extension is enabled");
+	else	ereport(LOG, (errmsg("pg_readonly:_PG_init(): pg_readonly is not enabled")));
 
 	/*
  	** Request additional shared resources.  (These are no-ops if we're not in
@@ -315,13 +331,15 @@ _PG_init(void)
  	** Install hooks
 	*/
 
-	prev_shmem_startup_hook = shmem_startup_hook;
-	shmem_startup_hook = pgro_shmem_startup;
-	prev_post_parse_analyze_hook = post_parse_analyze_hook;
-	prev_executor_start_hook = ExecutorStart_hook;
-	post_parse_analyze_hook = pgro_main;
- 	ExecutorStart_hook = pgro_exec;	
-		
+	if (pgro_enabled)
+	{
+		prev_shmem_startup_hook = shmem_startup_hook;
+		shmem_startup_hook = pgro_shmem_startup;
+		prev_post_parse_analyze_hook = post_parse_analyze_hook;
+		prev_executor_start_hook = ExecutorStart_hook;
+		post_parse_analyze_hook = pgro_main;
+ 		ExecutorStart_hook = pgro_exec;	
+	}	
 
 	elog(DEBUG5, "pg_readonly: _PG_init(): exit");
 }
