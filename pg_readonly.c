@@ -162,10 +162,18 @@ static bool pgro_get_readonly_internal()
  */
 Datum pgro_set_readonly(PG_FUNCTION_ARGS)
 {
-	elog(DEBUG5, "pg_readonly: pgro_set_readonly: entry");
-	elog(DEBUG5, "pg_readonly: pgro_set_readonly: exit");
-	read_only_flag_has_been_set = true;
-	PG_RETURN_BOOL(pgro_set_readonly_internal());
+	if (pgro_enabled == false)
+	{
+		ereport(ERROR, (errmsg("pg_readonly: pgro_set_readonly: pg_readonly is not enabled")));
+		PG_RETURN_BOOL(false);
+	}
+	else 
+	{
+		elog(DEBUG5, "pg_readonly: pgro_set_readonly: entry");
+		elog(DEBUG5, "pg_readonly: pgro_set_readonly: exit");
+		read_only_flag_has_been_set = true;
+		PG_RETURN_BOOL(pgro_set_readonly_internal());
+	}
 }
 
 /*
@@ -173,10 +181,18 @@ Datum pgro_set_readonly(PG_FUNCTION_ARGS)
  */
 Datum pgro_unset_readonly(PG_FUNCTION_ARGS)
 {
-	elog(DEBUG5, "pg_readonly: pgro_unset_readonly: entry");
-	elog(DEBUG5, "pg_readonly: pgro_unset_readonly: exit");
-	read_only_flag_has_been_set = false;
-	PG_RETURN_BOOL(pgro_unset_readonly_internal());
+	if (pgro_enabled == false)
+	{
+		ereport(ERROR, (errmsg("pg_readonly: pgro_unset_readonly: pg_readonly is not enabled")));
+		PG_RETURN_BOOL(false);
+	}
+	else
+	{
+		elog(DEBUG5, "pg_readonly: pgro_unset_readonly: entry");
+		elog(DEBUG5, "pg_readonly: pgro_unset_readonly: exit");
+		read_only_flag_has_been_set = false;
+		PG_RETURN_BOOL(pgro_unset_readonly_internal());
+	}
 
 }
 
@@ -185,9 +201,17 @@ Datum pgro_unset_readonly(PG_FUNCTION_ARGS)
  */
 Datum pgro_get_readonly(PG_FUNCTION_ARGS)
 {
-	elog(DEBUG5, "pg_readonly: pgro_get_readonly: entry");
-	elog(DEBUG5, "pg_readonly: pgro_get_readonly: exit");
-	PG_RETURN_BOOL(pgro_get_readonly_internal());
+	if (pgro_enabled == false)
+	{
+		ereport(ERROR, (errmsg("pg_readonly: pgro_get_readonly: pg_readonly is not enabled")));
+		PG_RETURN_BOOL(false);
+	}
+	else 
+	{
+		elog(DEBUG5, "pg_readonly: pgro_get_readonly: entry");
+		elog(DEBUG5, "pg_readonly: pgro_get_readonly: exit");
+		PG_RETURN_BOOL(pgro_get_readonly_internal());
+	}
 
 }
 
