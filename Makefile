@@ -14,4 +14,4 @@ PGXS := $(shell $(PG_CONFIG) --pgxs)
 include $(PGXS)
 
 pgxn:
-	git archive --format zip  --output ../pgxn/pg_readonly/pg_readonly-1.0.2.zip main
+	git archive --format zip  --output ../pgxn/pg_readonly/pg_readonly-1.0.2.zip master
