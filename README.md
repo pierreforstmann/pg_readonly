@@ -16,10 +16,14 @@ This extension has been validated with PostgreSQL 9.5, 9.6, 10, 11, 12, 13, 14 a
 
 ## PostgreSQL setup
 
-Extension must be loaded at server level with `shared_preload_libraries` parameter: <br> 
-`shared_preload_libraries = 'pg_readonly'` <br>
-and it must be created with following SQL statement at server level:<br>
-`create extension pg_readonly;` <br>
+Extension must be loaded at server level with `shared_preload_libraries` parameter: 
+<br> <br>
+`shared_preload_libraries = 'pg_readonly'` 
+<br><br>
+and it must be created with following SQL statement at server level:
+<br><br>
+`create extension pg_readonly;` 
+<br>
 
 
 ## Usage
