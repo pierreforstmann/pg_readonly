@@ -1,7 +1,7 @@
 {
    "name": "pg_readonly",
    "abstract": "set all cluster databases in read only",
-   "version": "1.0.1",
+   "version": "1.0.2",
    "maintainer": [
       "Pierre Forstmann"
    ],
@@ -23,7 +23,7 @@
          "abstract": "set all cluster databases in read only",
          "file": "pg_readonly.c",
          "docfile": "README.md",
-         "version": "1.0.1"
+         "version": "1.0.2"
       }
    },
    "resources": {
@@ -38,7 +38,7 @@
    },
    "generated_by": "Pierre Forstmann",
    "meta-spec": {
-      "version": "1.0.0",
+      "version": "1.0.2",
       "url": "http://pgxn.org/meta/spec.txt"
    },
    "tags": [

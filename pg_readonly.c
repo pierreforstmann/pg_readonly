@@ -54,6 +54,9 @@ typedef struct pgroSharedState
 } pgroSharedState;
 
 /* Saved hook values in case of unload */
+#if PG_VERSION_NUM >= 150000
+static shmem_request_hook_type prev_shmem_request_hook = NULL;
+#endif
 static post_parse_analyze_hook_type prev_post_parse_analyze_hook = NULL;
 static shmem_startup_hook_type prev_shmem_startup_hook = NULL;
 static ExecutorStart_hook_type prev_executor_start_hook = NULL;
@@ -68,6 +71,7 @@ static bool pgro_enabled = false;
 void		_PG_init(void);
 void		_PG_fini(void);
 
+static void pgro_shmem_request(void);
 static void pgro_shmem_startup(void);
 static void pgro_shmem_shutdown(int code, Datum arg);
 #if PG_VERSION_NUM < 140000
@@ -229,6 +233,31 @@ pgro_memsize(void)
 	return size;
 }
 
+/*
+ *
+ * shmen_request_hook
+ */
+static void
+pgro_shmem_request(void)
+{
+	/*
+ 	 * Request additional shared resources.  (These are no-ops if we're not in
+ 	 * the postmaster process.)  We'll allocate or attach to the shared
+ 	 * resources in pgls_shmem_startup().
+	 */
+
+#if PG_VERSION_NUM >= 150000
+	if (prev_shmem_request_hook)
+		prev_shmem_request_hook();
+#endif
+
+	RequestAddinShmemSpace(sizeof(pgroSharedState));
+#if PG_VERSION_NUM >= 90600
+	RequestNamedLWLockTranche("pg_readonly", 1);
+#endif
+
+}
+
 
 /*
  * shmem_startup hook: allocate or attach to shared memory.
@@ -254,7 +283,7 @@ pgro_shmem_startup(void)
 	LWLockAcquire(AddinShmemInitLock, LW_EXCLUSIVE);
 
 	pgro = ShmemInitStruct("pg_readonly",
-			        sizeof(pgroSharedState),
+			        pgro_memsize(),
 			        &found);
 
 	if (!found)
@@ -342,21 +371,19 @@ _PG_init(void)
 		elog(LOG, "pg_readonly:_PG_init(): pg_readonly extension is enabled");
 	else	ereport(LOG, (errmsg("pg_readonly:_PG_init(): pg_readonly is not enabled")));
 
-	/*
- 	** Request additional shared resources.  (These are no-ops if we're not in
- 	** the postmaster process.)  We'll allocate or attach to the shared
- 	** resources in pgro_shmem_startup().
-	**/
-	RequestAddinShmemSpace(pgro_memsize());
-#if PG_VERSION_NUM >= 90600
-	RequestNamedLWLockTranche("pg_readonly", 1);
-#endif
+
 	/*
  	** Install hooks
 	*/
 
 	if (pgro_enabled)
 	{
+#if PG_VERSION_NUM >= 150000
+		prev_shmem_request_hook = shmem_request_hook;
+		shmem_request_hook = pgro_shmem_request;
+#else
+		pgro_shmem_request();
+#endif
 		prev_shmem_startup_hook = shmem_startup_hook;
 		shmem_startup_hook = pgro_shmem_startup;
 		prev_post_parse_analyze_hook = post_parse_analyze_hook;
