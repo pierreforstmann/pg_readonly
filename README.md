@@ -31,7 +31,12 @@ pg_readonly has no specific GUC. <br><br>
 The read-only status is managed only in (shared) memory with a global flag. SQL functions are provided to set the flag, to unset the flag and to query the flag.
 The current version of the extension does not allow to store the read-only status in a permanent way.<br><br>
 The flag is at cluster level: either all databases are read-only or all database are read-write (the usual setting).<br><br>
-The read-only mode is implemented by filtering SQL statements: SELECT statements are allowed if they don't call functions that write. DML (INSERT, UPDATE, DELETE) and DDL statements are forbidden entirely.
+The read-only mode is implemented by filtering SQL statements: 
+<ul>
+<li>SELECT statements are allowed if they don't call functions that write. </li>
+<li>DML (INSERT, UPDATE, DELETE) and DDL statements including TRUNCATE are forbidden entirely. </li>
+<li> DCL statements GRANT and REVOKE are also forbidden. </li>
+</ul>
 This means that the databases are in read-only mode at SQL level: however, the checkpointer, background writer, walwriter and the autovacuum launcher are still running; this means that the database files are not read-only and that in some cases the database may still write to disk.<br>
 
 
