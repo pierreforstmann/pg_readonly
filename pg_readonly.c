@@ -79,7 +79,7 @@ static void pgro_main(ParseState *pstate, Query *query);
 #else
 static void pgro_main(ParseState *pstate, Query *query, JumbleState *jstate);
 #endif
-static void pgro_exec(QueryDesc *queryDesc, int eflags);
+static bool pgro_exec(QueryDesc *queryDesc, int eflags);
 
 static bool pgro_set_readonly_internal();
 static bool pgro_unset_readonly_internal();
@@ -543,7 +543,7 @@ pgro_main(ParseState *pstate, Query *query, JumbleState *jstate)
 	elog(DEBUG5, "pg_readonly: pgro_main: exit");
 }
 
-static void
+static bool
 pgro_exec(QueryDesc *queryDesc, int eflags)
 {
 	char *ops="select";
@@ -585,5 +585,7 @@ pgro_exec(QueryDesc *queryDesc, int eflags)
 	if (prev_executor_start_hook)
                 (*prev_executor_start_hook)(queryDesc, eflags);
 	else	standard_ExecutorStart(queryDesc, eflags);
+
+	return true;
 
 }
