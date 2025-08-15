@@ -12,7 +12,7 @@ This module can be built using the standard PGXS infrastructure. For this to wor
 `make` <br>
 `make install` <br>
 
-This extension has been validated with PostgreSQL 9.5, 9.6, 10, 11, 12, 13, 14, 15, 16, 17 and 18 Beta 2.
+This extension has been validated with PostgreSQL 9.5, 9.6, 10, 11, 12, 13, 14, 15, 16, 17 and 18 Beta 3.
 
 ## PostgreSQL setup
 
