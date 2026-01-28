@@ -86,3 +86,11 @@ select * from t;
  1
 (1 row)
 
+with inserted as (insert into t values(3) returning 3) select * from inserted;
+ERROR:  pg_readonly: pgro_exec: invalid statement because cluster is read-only
+select * from t;
+ i 
+---
+ 1
+(1 row)
+

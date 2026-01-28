@@ -42,3 +42,6 @@ select get_cluster_readonly();
 select f(3);
 
 select * from t;
+
+with inserted as (insert into t values(3) returning 3) select * from inserted;
+select * from t;

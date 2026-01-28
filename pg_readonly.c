@@ -413,7 +413,8 @@ pgro_exec(QueryDesc *queryDesc, int eflags)
 	char *opo="other";
 	char *op;
 	bool command_is_ro = false;
-
+	PlannedStmt *plannedstmt = queryDesc->plannedstmt;
+	
 	switch (queryDesc->operation)
 	{
 		case CMD_SELECT:
@@ -437,6 +438,16 @@ pgro_exec(QueryDesc *queryDesc, int eflags)
 			command_is_ro = false;
 			break;
 		}
+
+	/* 
+	 * for CTE:
+     * check hasModifyingCTE flag (covers CTEs with INSERT/UPDATE/DELETE)
+     */
+	
+	 if (plannedstmt->hasModifyingCTE) {
+		op = opu;
+        command_is_ro = false;
+	 }
 
 	elog(LOG, "pg_readonly: pgro_exec: qd->op %s", op);
 	if (pgro_get_readonly_internal() == true && command_is_ro == false)
