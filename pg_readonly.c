@@ -57,7 +57,6 @@ typedef struct pgroSharedState
 #if PG_VERSION_NUM >= 150000
 static shmem_request_hook_type prev_shmem_request_hook = NULL;
 #endif
-static post_parse_analyze_hook_type prev_post_parse_analyze_hook = NULL;
 static shmem_startup_hook_type prev_shmem_startup_hook = NULL;
 static ExecutorStart_hook_type prev_executor_start_hook = NULL;
 
@@ -74,11 +73,6 @@ void		_PG_fini(void);
 static void pgro_shmem_request(void);
 static void pgro_shmem_startup(void);
 static void pgro_shmem_shutdown(int code, Datum arg);
-#if PG_VERSION_NUM < 140000
-static void pgro_main(ParseState *pstate, Query *query);
-#else
-static void pgro_main(ParseState *pstate, Query *query, JumbleState *jstate);
-#endif
 static void pgro_exec(QueryDesc *queryDesc, int eflags);
 
 static bool pgro_set_readonly_internal();
@@ -386,9 +380,7 @@ _PG_init(void)
 #endif
 		prev_shmem_startup_hook = shmem_startup_hook;
 		shmem_startup_hook = pgro_shmem_startup;
-		prev_post_parse_analyze_hook = post_parse_analyze_hook;
 		prev_executor_start_hook = ExecutorStart_hook;
-		post_parse_analyze_hook = pgro_main;
  		ExecutorStart_hook = pgro_exec;	
 	}	
 
@@ -406,141 +398,9 @@ _PG_fini(void)
 
 	/* Uninstall hooks. */
 	shmem_startup_hook = prev_shmem_startup_hook;
-	post_parse_analyze_hook = prev_post_parse_analyze_hook;
 	ExecutorStart_hook = prev_executor_start_hook;
 
 	elog(DEBUG5, "pg_readonly: _PG_fini(): exit");
-}
-
-/*
- *
- */
-
-static void
-#if PG_VERSION_NUM < 140000
-pgro_main(ParseState *pstate, Query *query)
-#else
-pgro_main(ParseState *pstate, Query *query, JumbleState *jstate)
-#endif
-{
-
-	char	*sekw = "SELECT";
-	char	*inkw = "INSERT";
-	char	*upkw = "UPDATE";
-	char	*dekw = "DELETE";
-	char	*utkw = "UTILITY";
-	char	*nokw = "NOTHING";
-	char	*unkw = "UNKNOWN";
-	char	*kokw = "???????";
-	char	*kw = NULL;
-	char	*expstmt = "EXPLAIN";
-	char	*setvstmt = "SET";
-	char	*showvstmt = "SHOW";
-	char	*prepstmt = "PREPARE";
-	char	*execstmt = "EXECUTE";
-	char	*deallocstmt = "DEALLOC";
-	char	*otherstmt = "OTHER";
-	char	*stmt = NULL;
-	bool	command_is_ro = false;
-	
-	elog(DEBUG5, "pg_readonly: pgro_main entry");
-
-	switch (query->commandType) {
-		case CMD_UNKNOWN:
-			kw = unkw;
-			break;
-		case CMD_SELECT:
-			command_is_ro = true;
-			kw = sekw;
-			break;
-		case CMD_UPDATE:
-			kw = upkw;
-			break;
-		case CMD_INSERT:
-			kw = inkw;
-			break;
-		case CMD_DELETE:
-			kw = dekw;
-			break;
-		case CMD_UTILITY:
-			kw = utkw;
-			/*
-                         * allow ROLLBACK
-                         * for killed transactions
-                         */
-			if (
-                              strstr((pstate->p_sourcetext), "rollback")
-					|| 
-                              strstr((pstate->p_sourcetext), "ROLLBACK")
-                           )
-			{
-				elog(DEBUG1, "pg_readonly: pgro_main: query->querySource=%s",
-                                     pstate->p_sourcetext);
-				command_is_ro = true;
-			}
-			break;
-		case CMD_NOTHING:
-			kw = nokw;
-			break;
-		default:
-			kw = kokw;
-			break;
-	  
-	}
-	elog(DEBUG1, "pg_readonly: pgro_main: query->commandType=%s", kw);
-	elog(DEBUG1, "pg_readonly: pgro_main: command_is_ro=%d", command_is_ro);
-	
-
-
-	if (query->commandType == CMD_UTILITY)
-	{
-		switch ((nodeTag(query->utilityStmt)))
-		{
-			case T_ExplainStmt: 
-				stmt = expstmt;
-				command_is_ro = true;
-				break;
-			case T_VariableSetStmt: 
-				stmt = setvstmt;
-				command_is_ro = true;
-				break;
-			case T_VariableShowStmt: 
-				stmt = showvstmt;
-				command_is_ro = true;
-				break;
-			case T_PrepareStmt: 
-				stmt = prepstmt;
-				command_is_ro = true;
-				break;
-			case T_ExecuteStmt: 
-				stmt = execstmt;
-				command_is_ro = true;
-				break;
-			case T_DeallocateStmt: 
-				stmt = deallocstmt;
-				command_is_ro = true;
-				break;
-			default:
-				stmt = otherstmt;
-				break;
-		}
-		elog(DEBUG1, "pg_readonly: pgro_main: query->UtilityStmt=%s", stmt);
-		elog(DEBUG1, "pg_readonly: pgro_main: command_is_ro=%d", command_is_ro);
-	}
-
-	if (pgro_get_readonly_internal() == true && command_is_ro == false)
-		ereport(ERROR, (errmsg("pg_readonly: pgro_main: invalid statement because cluster is read-only")));
-			
-
-	if (prev_post_parse_analyze_hook)
-#if PG_VERSION_NUM <= 140000
-		(*prev_post_parse_analyze_hook)(pstate, query);	
-#else
-		(*prev_post_parse_analyze_hook)(pstate, query, jstate);	
-#endif
-	/* no "standard" call for else branch */
-
-	elog(DEBUG5, "pg_readonly: pgro_main: exit");
 }
 
 static void 
