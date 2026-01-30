@@ -1,6 +1,7 @@
 # pg_readonly
 pg_readonly is a PostgreSQL extension which allows to set all cluster databases read only.
 
+Note that version 1.0.4 is fixing a important bug regarding DML in CTE.
 
 # Installation
 ## Compiling

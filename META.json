@@ -23,7 +23,7 @@
          "abstract": "set all cluster databases in read only",
          "file": "pg_readonly.c",
          "docfile": "README.md",
-         "version": "1.0.3"
+         "version": "1.0.4"
       }
    },
    "resources": {
