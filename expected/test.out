@@ -39,9 +39,9 @@ select * from t;
 (0 rows)
 
 insert into t values (1);
-ERROR:  pg_readonly: pgro_exec: invalid statement because cluster is read-only
+ERROR:  cannot execute INSERT in a read-only transaction
 select f(1);
-ERROR:  pg_readonly: pgro_exec: invalid statement because cluster is read-only
+ERROR:  cannot execute INSERT in a read-only transaction
 CONTEXT:  SQL statement "insert into t(i) values (f.p) returning t.i"
 PL/pgSQL function f(integer) line 3 at SQL statement
 -- However, in this same session, if you call f() before entering in read only mode, 
@@ -65,9 +65,9 @@ select set_cluster_readonly();
 (1 row)
 
 insert into t values (2);
-ERROR:  pg_readonly: pgro_exec: invalid statement because cluster is read-only
+ERROR:  cannot execute INSERT in a read-only transaction
 select f(2);
-ERROR:  pg_readonly: pgro_exec: invalid statement because cluster is read-only
+ERROR:  cannot execute INSERT in a read-only transaction
 CONTEXT:  SQL statement "insert into t(i) values (f.p) returning t.i"
 PL/pgSQL function f(integer) line 3 at SQL statement
 select get_cluster_readonly();
@@ -77,7 +77,7 @@ select get_cluster_readonly();
 (1 row)
 
 select f(3);
-ERROR:  pg_readonly: pgro_exec: invalid statement because cluster is read-only
+ERROR:  cannot execute INSERT in a read-only transaction
 CONTEXT:  SQL statement "insert into t(i) values (f.p) returning t.i"
 PL/pgSQL function f(integer) line 3 at SQL statement
 select * from t;
@@ -87,7 +87,7 @@ select * from t;
 (1 row)
 
 with inserted as (insert into t values(3) returning 3) select * from inserted;
-ERROR:  pg_readonly: pgro_exec: invalid statement because cluster is read-only
+ERROR:  cannot execute SELECT in a read-only transaction
 select * from t;
  i 
 ---

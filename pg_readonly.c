@@ -33,6 +33,8 @@
 #include "miscadmin.h"
 #include "storage/procarray.h"
 #include "executor/executor.h"
+#include "catalog/namespace.h"
+#include "utils/lsyscache.h"
 
 PG_MODULE_MAGIC;
 
@@ -82,7 +84,36 @@ static bool pgro_get_readonly_internal();
 PG_FUNCTION_INFO_V1(pgro_set_readonly);
 PG_FUNCTION_INFO_V1(pgro_unset_readonly);
 PG_FUNCTION_INFO_V1(pgro_get_readonly);
-	
+
+
+/*
+ * clone ExecCheckXactReadOnly from execMain.c
+ */
+
+static void ExecCheckXactReadOnly(PlannedStmt *plannedstmt)
+{
+    ListCell   *l;
+
+    /*
+     * Fail if write permissions are requested in parallel mode for table
+     * (temp or non-temp), otherwise fail for any non-temp table.
+     */
+    foreach(l, plannedstmt->permInfos)
+    {
+        RTEPermissionInfo *perminfo = lfirst_node(RTEPermissionInfo, l);
+
+        if ((perminfo->requiredPerms & (~ACL_SELECT)) == 0)
+            continue;
+
+        if (isTempNamespace(get_rel_namespace(perminfo->relid)))
+            continue;
+
+        PreventCommandIfReadOnly(CreateCommandName((Node *) plannedstmt));
+    }
+
+    if (plannedstmt->commandType != CMD_SELECT || plannedstmt->hasModifyingCTE)
+        PreventCommandIfParallelMode(CreateCommandName((Node *) plannedstmt));
+}
 
 /*
  * set cluster databases to read-only
@@ -406,52 +437,26 @@ _PG_fini(void)
 static void 
 pgro_exec(QueryDesc *queryDesc, int eflags)
 {
-	char *ops="select";
-	char *opi="insert";
-	char *opu="update";
-	char *opd="delete"; 
-	char *opo="other";
-	char *op;
-	bool command_is_ro = false;
+	
+	const char *config_value;
+	 
 	PlannedStmt *plannedstmt = queryDesc->plannedstmt;
-	
-	switch (queryDesc->operation)
-	{
-		case CMD_SELECT:
-			op = ops;
-			command_is_ro = true;
-			break;
-		case CMD_INSERT:
-			op = opi;
-			command_is_ro = false;
-			break;
-		case CMD_UPDATE:
-			op = opu;
-			command_is_ro = false;
-			break;
-		case CMD_DELETE:
-			op = opd;
-			command_is_ro = false;
-			break;
-		default:
-			op=opo;
-			command_is_ro = false;
-			break;
-		}
 
-	/* 
-	 * for CTE:
-     * check hasModifyingCTE flag (covers CTEs with INSERT/UPDATE/DELETE)
-     */
-	
-	 if (plannedstmt->hasModifyingCTE) {
-		op = opu;
-        command_is_ro = false;
-	 }
+	if (pgro_get_readonly_internal() == true) {
+	    /*
+	     *  use XactReadOnly machinery
+	     */
+	    config_value = GetConfigOption("transaction_read_only", false, false);
+	    SetConfigOption("transaction_read_only", "true", PGC_BACKEND, PGC_S_OVERRIDE);
 
-	elog(LOG, "pg_readonly: pgro_exec: qd->op %s", op);
-	if (pgro_get_readonly_internal() == true && command_is_ro == false)
-		ereport(ERROR, (errmsg("pg_readonly: pgro_exec: invalid statement because cluster is read-only")));
+	    ExecCheckXactReadOnly(plannedstmt);
+
+	    /* 
+	     * SetConfigOption("transaction_read_only", config_value, PGC_BACKEND, PGC_S_OVERRIDE); 
+	     * triggers: ERROR: transaction read-write mode must be set before any query
+	     */
+
+	}
 
 	if (prev_executor_start_hook)
                 (*prev_executor_start_hook)(queryDesc, eflags);
