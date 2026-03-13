@@ -1,13 +1,13 @@
 /*-------------------------------------------------------------------------
- *  
+ *
  * pg_readonly is a PostgreSQL extension which allows to set a whole
  * cluster read only: no INSERT,UPDATE,DELETE and no DDL can be run.
- *  
+ *
  * This program is open source, licensed under the PostgreSQL license.
  * For license terms, see the LICENSE file.
- *          
+ *
  * Copyright (c) 2020, Pierre Forstmann.
- *            
+ *
  *-------------------------------------------------------------------------
 */
 #include "postgres.h"
@@ -24,7 +24,7 @@
 #if PG_VERSION_NUM <= 90600
 #include "storage/lwlock.h"
 #endif
-#if PG_VERSION_NUM < 120000 
+#if PG_VERSION_NUM < 120000
 #include "access/transam.h"
 #endif
 
@@ -37,7 +37,7 @@
 PG_MODULE_MAGIC;
 
 /*
- * has set_cluster_readonly() been executed 
+ * has set_cluster_readonly() been executed
  * in the current backend.
  */
 static bool read_only_flag_has_been_set = false;
@@ -45,7 +45,7 @@ static bool read_only_flag_has_been_set = false;
 /*
  *
  * Global shared state
- * 
+ *
  */
 typedef struct pgroSharedState
 {
@@ -82,7 +82,7 @@ static bool pgro_get_readonly_internal();
 PG_FUNCTION_INFO_V1(pgro_set_readonly);
 PG_FUNCTION_INFO_V1(pgro_unset_readonly);
 PG_FUNCTION_INFO_V1(pgro_get_readonly);
-	
+
 
 /*
  * set cluster databases to read-only
@@ -98,7 +98,7 @@ static bool pgro_set_readonly_internal()
 	int excludeVacuum = 0;
 	int nvxids;
 	int i;
-#if PG_VERSION_NUM < 180000
+#if PG_VERSION_NUM < 190000
 	pid_t pid;
 #endif
 
@@ -111,7 +111,7 @@ static bool pgro_set_readonly_internal()
 	         &nvxids);
 	for (i=0; i < nvxids; i++)
 	{
-#if PG_VERSION_NUM >= 180000
+#if PG_VERSION_NUM >= 190000
 		SignalRecoveryConflictWithVirtualXID(
 			tvxid[i],
 			RECOVERY_CONFLICT_SNAPSHOT);
@@ -156,7 +156,7 @@ static bool pgro_get_readonly_internal()
 	bool val;
 
 	LWLockAcquire(pgro->lock, LW_SHARED);
-	val = pgro->cluster_is_readonly; 
+	val = pgro->cluster_is_readonly;
 	LWLockRelease(pgro->lock);
 	return val;
 }
@@ -171,7 +171,7 @@ Datum pgro_set_readonly(PG_FUNCTION_ARGS)
 		ereport(ERROR, (errmsg("pg_readonly: pgro_set_readonly: pg_readonly is not enabled")));
 		PG_RETURN_BOOL(false);
 	}
-	else 
+	else
 	{
 		elog(DEBUG5, "pg_readonly: pgro_set_readonly: entry");
 		elog(DEBUG5, "pg_readonly: pgro_set_readonly: exit");
@@ -201,7 +201,7 @@ Datum pgro_unset_readonly(PG_FUNCTION_ARGS)
 }
 
 /*
- * get cluster databases status 
+ * get cluster databases status
  */
 Datum pgro_get_readonly(PG_FUNCTION_ARGS)
 {
@@ -210,7 +210,7 @@ Datum pgro_get_readonly(PG_FUNCTION_ARGS)
 		ereport(ERROR, (errmsg("pg_readonly: pgro_get_readonly: pg_readonly is not enabled")));
 		PG_RETURN_BOOL(false);
 	}
-	else 
+	else
 	{
 		elog(DEBUG5, "pg_readonly: pgro_get_readonly: entry");
 		elog(DEBUG5, "pg_readonly: pgro_get_readonly: exit");
@@ -295,7 +295,7 @@ pgro_shmem_startup(void)
 #else
 		pgro->lock = &(GetNamedLWLockTranche("pg_readonly"))->lock;
 #endif
-	
+
 		pgro->cluster_is_readonly = false;
 	}
 
@@ -303,8 +303,8 @@ pgro_shmem_startup(void)
 
 	/*
          * If we're in the postmaster (or a standalone backend...), set up a shmem
-         * exit hook (no current need ???) 
-         */ 
+         * exit hook (no current need ???)
+         */
         if (!IsUnderPostmaster)
 		on_shmem_exit(pgro_shmem_shutdown, (Datum) 0);
 
@@ -321,7 +321,7 @@ pgro_shmem_startup(void)
 /*
  *
  *  shmem_shutdown hook
- *   
+ *
  *  Note: we don't bother with acquiring lock, because there should be no
  *  other processes running when this is called.
  */
@@ -337,7 +337,7 @@ pgro_shmem_shutdown(int code, Datum arg)
 	/* Safety check ... shouldn't get here unless shmem is set up. */
 	if (!pgro)
 		return;
-	
+
 	/* currently: no action */
 
 	elog(DEBUG5, "pg_readonly: pgro_shmem_shutdown: exit");
@@ -353,7 +353,7 @@ _PG_init(void)
 
 	const char *shared_preload_libraries_config;
         char *pg_readonly;
-	
+
 	elog(DEBUG5, "pg_readonly: _PG_init(): entry");
 
 	shared_preload_libraries_config = GetConfigOption("shared_preload_libraries", true, false);
@@ -387,8 +387,8 @@ _PG_init(void)
 		prev_shmem_startup_hook = shmem_startup_hook;
 		shmem_startup_hook = pgro_shmem_startup;
 		prev_executor_start_hook = ExecutorStart_hook;
- 		ExecutorStart_hook = pgro_exec;	
-	}	
+ 		ExecutorStart_hook = pgro_exec;
+	}
 
 	elog(DEBUG5, "pg_readonly: _PG_init(): exit");
 }
@@ -409,18 +409,18 @@ _PG_fini(void)
 	elog(DEBUG5, "pg_readonly: _PG_fini(): exit");
 }
 
-static void 
+static void
 pgro_exec(QueryDesc *queryDesc, int eflags)
 {
 	char *ops="select";
 	char *opi="insert";
 	char *opu="update";
-	char *opd="delete"; 
+	char *opd="delete";
 	char *opo="other";
 	char *op;
 	bool command_is_ro = false;
 	PlannedStmt *plannedstmt = queryDesc->plannedstmt;
-	
+
 	switch (queryDesc->operation)
 	{
 		case CMD_SELECT:
@@ -445,11 +445,11 @@ pgro_exec(QueryDesc *queryDesc, int eflags)
 			break;
 		}
 
-	/* 
+	/*
 	 * for CTE:
      * check hasModifyingCTE flag (covers CTEs with INSERT/UPDATE/DELETE)
      */
-	
+
 	 if (plannedstmt->hasModifyingCTE) {
 		op = opu;
         command_is_ro = false;
