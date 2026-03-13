@@ -98,24 +98,30 @@ static bool pgro_set_readonly_internal()
 	int excludeVacuum = 0;
 	int nvxids;
 	int i;
+#if PG_VERSION_NUM < 180000
 	pid_t pid;
+#endif
 
 	elog(LOG, "pg_readonly: killing all transactions ...");
 	tvxid = GetCurrentVirtualXIDs(
                  limitXmin,
-	         excludeXmin0, 
-                 allDbs, 
+	         excludeXmin0,
+                 allDbs,
                  excludeVacuum,
 	         &nvxids);
 	for (i=0; i < nvxids; i++)
 	{
-		/*
-                 * No adequate ProcSignalReason found
-                 */
+#if PG_VERSION_NUM >= 180000
+		SignalRecoveryConflictWithVirtualXID(
+			tvxid[i],
+			RECOVERY_CONFLICT_SNAPSHOT);
+		elog(LOG, "pg_readonly: virtual transaction signalled");
+#else
 		pid = CancelVirtualTransaction(
 			tvxid[i],
-                        PROCSIG_RECOVERY_CONFLICT_SNAPSHOT);
- 		elog(LOG, "pg_readonly: PID %d signalled", pid);
+			PROCSIG_RECOVERY_CONFLICT_SNAPSHOT);
+		elog(LOG, "pg_readonly: PID %d signalled", pid);
+#endif
 	}
  	elog(LOG, "pg_readonly: ... done.");
 
