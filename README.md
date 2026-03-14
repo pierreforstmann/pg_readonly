@@ -5,18 +5,18 @@ Note that version 1.0.4 is fixing a important bug regarding DML in CTE.
 
 # Installation
 
-## PostgreSQL installation with standard GNU/Linux package
+## installation with GNU/Linux package
 
 For example install RPM package with:
 <br><br>
-sudo dnf install -y pg_readonly_17
+`sudo dnf install -y pg_readonly_17`
 <br><br>
 Extension must be loaded at server level with `shared_preload_libraries` parameter:
 <br><br>
 `shared_preload_libraries = 'pg_readonly'`
 <br><br>
 Stop and restart PostgreSQL instance and create the extension with:
-<br><br
+<br><br>
 `create extension pg_readonly;`
 <br><br>
 
@@ -32,12 +32,12 @@ This extension can be built using the standard PGXS infrastructure. For this to 
 
 ## Compiling, installing and testing without PGXS
 You can also build the extension without PGXS in the PostgreSQL source code tree:<br>
-cd contrib<br>
+`cd contrib`<br>
 `git clone https://github.com/pierreforstmann/pg_readonly.git` <br>
 `cd pg_readonly` <br>
 `make` <br>
 `make install` <br>
-Running `make installcheck` is going to use an existing PostgreSQL instance and you need to set `shared_preload_libraires` for this instance (see above).
+Running `make installcheck` is going to use an existing PostgreSQL instance and you need to set `shared_preload_libraires` for this instance (see above):
 <br>
 `make installcheck`<br>
 
