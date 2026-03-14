@@ -21,7 +21,7 @@ Stop and restart PostgreSQL instance and create the extension with:
 <br><br>
 
 ## Compiling, installing and testing with PGXS
-This extension can be built using the standard PGXS infrastructure. For this to work, the pg_config program must be available in your $PATH:
+This extension can be built using the standard PGXS infrastructure for example with [pgenv](https://github.com/theory/pgenv) :
 
 `git clone https://github.com/pierreforstmann/pg_readonly.git` <br>
 `cd pg_readonly` <br>
