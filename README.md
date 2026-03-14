@@ -35,10 +35,15 @@ You can also build the extension without PGXS in the PostgreSQL source code tree
 `cd contrib`<br>
 `git clone https://github.com/pierreforstmann/pg_readonly.git` <br>
 `cd pg_readonly` <br>
-`make` <br>
-`make install` <br>
-Running `make installcheck` is going to use an existing PostgreSQL instance and you need to set `shared_preload_libraires` for this instance (see above):
+`make` <br><br>
+Running `make check` is going to start a temporary instance used for running the test using only built binaries:<br>
+`make check`
+<br> <br>
+Running `make installcheck` is going to use an existing PostgreSQL instance with installed binaries.
 <br>
+You need to set `shared_preload_libraires` for this instance (see above):
+<br>
+`make install`<br>
 `make installcheck`<br>
 
 ## Validated PostgreSQL versions
