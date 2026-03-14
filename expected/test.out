@@ -3,16 +3,16 @@
 --
 create extension pg_readonly;
 --
-select get_cluster_readonly();
- get_cluster_readonly 
-----------------------
- f
-(1 row)
-
 select unset_cluster_readonly();
  unset_cluster_readonly 
 ------------------------
  t
+(1 row)
+
+select get_cluster_readonly();
+ get_cluster_readonly 
+----------------------
+ f
 (1 row)
 
 --

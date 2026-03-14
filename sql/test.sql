@@ -3,8 +3,8 @@
 --
 create extension pg_readonly;
 --
-select get_cluster_readonly();
 select unset_cluster_readonly();
+select get_cluster_readonly();
 --
 drop table t;
 drop function f;
