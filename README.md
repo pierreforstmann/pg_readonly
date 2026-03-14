@@ -5,7 +5,7 @@ Note that version 1.0.4 is fixing a important bug regarding DML in CTE.
 
 # Installation
 
-## installation with GNU/Linux package
+## Installation with GNU/Linux package
 
 For example install RPM package with:
 <br><br>
@@ -25,7 +25,7 @@ This extension can be built using the standard PGXS infrastructure. For this to 
 
 `git clone https://github.com/pierreforstmann/pg_readonly.git` <br>
 `cd pg_readonly` <br>
-`export USE_PGXS=1`
+`export USE_PGXS=1`<br>
 `make` <br>
 `make install` <br>
 `make installcheck`<br>
