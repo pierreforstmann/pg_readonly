@@ -108,3 +108,11 @@ select * from t;
  1
 (1 row)
 
+-- Large object creation: lo_create() is a SELECT-callable function that
+-- writes to the pg_largeobject catalog internally.
+SELECT lo_create(0);
+ lo_create 
+-----------
+     16393
+(1 row)
+

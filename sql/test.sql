@@ -52,3 +52,7 @@ CREATE TABLE t2(i int);
 -- DO block: INSERT inside a DO block should be blocked by the executor hook
 DO $$ BEGIN INSERT INTO t VALUES (99); END $$;
 select * from t;
+
+-- Large object creation: lo_create() is a SELECT-callable function that
+-- writes to the pg_largeobject catalog internally.
+SELECT lo_create(0);
