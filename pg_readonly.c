@@ -59,6 +59,7 @@ static shmem_request_hook_type prev_shmem_request_hook = NULL;
 #endif
 static shmem_startup_hook_type prev_shmem_startup_hook = NULL;
 static ExecutorStart_hook_type prev_executor_start_hook = NULL;
+static ProcessUtility_hook_type prev_process_utility_hook = NULL;
 
 /* Links to shared memory state */
 static pgroSharedState *pgro= NULL;
@@ -74,6 +75,12 @@ static void pgro_shmem_request(void);
 static void pgro_shmem_startup(void);
 static void pgro_shmem_shutdown(int code, Datum arg);
 static void pgro_exec(QueryDesc *queryDesc, int eflags);
+static void pgro_utility(PlannedStmt *pstmt, const char *queryString,
+						 bool readOnlyTree,
+						 ProcessUtilityContext context,
+						 ParamListInfo params,
+						 QueryEnvironment *queryEnv,
+						 DestReceiver *dest, QueryCompletion *qc);
 
 static bool pgro_set_readonly_internal();
 static bool pgro_unset_readonly_internal();
@@ -387,6 +394,8 @@ _PG_init(void)
 		shmem_startup_hook = pgro_shmem_startup;
 		prev_executor_start_hook = ExecutorStart_hook;
  		ExecutorStart_hook = pgro_exec;
+		prev_process_utility_hook = ProcessUtility_hook;
+		ProcessUtility_hook = pgro_utility;
 	}
 
 	elog(DEBUG5, "pg_readonly: _PG_init(): exit");
@@ -404,6 +413,7 @@ _PG_fini(void)
 	/* Uninstall hooks. */
 	shmem_startup_hook = prev_shmem_startup_hook;
 	ExecutorStart_hook = prev_executor_start_hook;
+	ProcessUtility_hook = prev_process_utility_hook;
 
 	elog(DEBUG5, "pg_readonly: _PG_fini(): exit");
 }
@@ -462,4 +472,101 @@ pgro_exec(QueryDesc *queryDesc, int eflags)
                 (*prev_executor_start_hook)(queryDesc, eflags);
 	else	standard_ExecutorStart(queryDesc, eflags);
 
+}
+
+/*
+ * Return true if the utility command is read-only (does not modify catalog
+ * or user data).  This is a simplified version of the core's static
+ * ClassifyUtilityCommandAsReadOnly(), whitelisting only commands that are
+ * safe in a read-only environment.
+ */
+static bool
+pgro_utility_is_read_only(Node *parsetree)
+{
+	switch (nodeTag(parsetree))
+	{
+		/* Strictly read-only commands */
+		case T_AlterSystemStmt:
+		case T_CallStmt:
+		case T_CheckPointStmt:
+		case T_ClosePortalStmt:
+		case T_ConstraintsSetStmt:
+		case T_DeallocateStmt:
+		case T_DeclareCursorStmt:
+		case T_DiscardStmt:
+		case T_DoStmt:
+		case T_ExecuteStmt:
+		case T_ExplainStmt:
+		case T_FetchStmt:
+		case T_LoadStmt:
+		case T_PrepareStmt:
+		case T_UnlistenStmt:
+		case T_VariableSetStmt:
+		case T_VariableShowStmt:
+		case T_WaitStmt:
+			return true;
+
+		case T_TransactionStmt:
+			{
+				TransactionStmt *stmt = (TransactionStmt *) parsetree;
+
+				switch (stmt->kind)
+				{
+					case TRANS_STMT_BEGIN:
+					case TRANS_STMT_START:
+					case TRANS_STMT_COMMIT:
+					case TRANS_STMT_ROLLBACK:
+					case TRANS_STMT_SAVEPOINT:
+					case TRANS_STMT_RELEASE:
+					case TRANS_STMT_ROLLBACK_TO:
+					case TRANS_STMT_PREPARE:
+					case TRANS_STMT_COMMIT_PREPARED:
+					case TRANS_STMT_ROLLBACK_PREPARED:
+						return true;
+				}
+				return false;
+			}
+
+		case T_LockStmt:
+			return true;
+
+		/* COPY TO is read-only, COPY FROM is not */
+		case T_CopyStmt:
+			return !((CopyStmt *) parsetree)->is_from;
+
+		default:
+			return false;
+	}
+}
+
+/*
+ * ProcessUtility hook.
+ *
+ * Block utility commands that modify catalog or data when cluster is read-only.
+ */
+static void
+pgro_utility(PlannedStmt *pstmt, const char *queryString,
+			 bool readOnlyTree,
+			 ProcessUtilityContext context,
+			 ParamListInfo params,
+			 QueryEnvironment *queryEnv,
+			 DestReceiver *dest, QueryCompletion *qc)
+{
+	if (pgro_get_readonly_internal() &&
+		!pgro_utility_is_read_only(pstmt->utilityStmt))
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_READ_ONLY_SQL_TRANSACTION),
+				 errmsg("pg_readonly: %s is not allowed because cluster is read-only",
+						CreateCommandName(pstmt->utilityStmt))));
+	}
+
+	if (prev_process_utility_hook)
+		(*prev_process_utility_hook)(pstmt, queryString, readOnlyTree,
+									 context, params, queryEnv,
+									 dest, qc);
+	else
+		standard_ProcessUtility(pstmt, queryString, readOnlyTree,
+								context, params, queryEnv,
+								dest, qc);
 }
