@@ -97,3 +97,14 @@ select * from t;
 -- DDL is also blocked via ProcessUtility hook
 CREATE TABLE t2(i int);
 ERROR:  pg_readonly: CREATE TABLE is not allowed because cluster is read-only
+-- DO block: INSERT inside a DO block should be blocked by the executor hook
+DO $$ BEGIN INSERT INTO t VALUES (99); END $$;
+ERROR:  pg_readonly: pgro_exec: invalid statement because cluster is read-only
+CONTEXT:  SQL statement "INSERT INTO t VALUES (99)"
+PL/pgSQL function inline_code_block line 1 at SQL statement
+select * from t;
+ i 
+---
+ 1
+(1 row)
+

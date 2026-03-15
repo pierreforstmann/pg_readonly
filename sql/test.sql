@@ -48,3 +48,7 @@ select * from t;
 
 -- DDL is also blocked via ProcessUtility hook
 CREATE TABLE t2(i int);
+
+-- DO block: INSERT inside a DO block should be blocked by the executor hook
+DO $$ BEGIN INSERT INTO t VALUES (99); END $$;
+select * from t;
