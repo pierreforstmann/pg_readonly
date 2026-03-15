@@ -45,3 +45,8 @@ select * from t;
 
 with inserted as (insert into t values(3) returning 3) select * from inserted;
 select * from t;
+
+-- Known limitation: DDL is not blocked because it goes through
+-- ProcessUtility, not ExecutorStart. A ProcessUtility_hook would be
+-- needed to cover this case.
+CREATE TABLE t2(i int);

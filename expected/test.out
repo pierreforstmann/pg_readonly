@@ -94,3 +94,7 @@ select * from t;
  1
 (1 row)
 
+-- Known limitation: DDL is not blocked because it goes through
+-- ProcessUtility, not ExecutorStart. A ProcessUtility_hook would be
+-- needed to cover this case.
+CREATE TABLE t2(i int);
