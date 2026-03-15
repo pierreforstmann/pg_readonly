@@ -438,23 +438,15 @@ static void
 pgro_exec(QueryDesc *queryDesc, int eflags)
 {
 	
-	const char *config_value;
-	 
 	PlannedStmt *plannedstmt = queryDesc->plannedstmt;
 
 	if (pgro_get_readonly_internal() == true) {
 	    /*
 	     *  use XactReadOnly machinery
 	     */
-	    config_value = GetConfigOption("transaction_read_only", false, false);
 	    SetConfigOption("transaction_read_only", "true", PGC_BACKEND, PGC_S_OVERRIDE);
 
 	    ExecCheckXactReadOnly(plannedstmt);
-
-	    /* 
-	     * SetConfigOption("transaction_read_only", config_value, PGC_BACKEND, PGC_S_OVERRIDE); 
-	     * triggers: ERROR: transaction read-write mode must be set before any query
-	     */
 
 	}
 
