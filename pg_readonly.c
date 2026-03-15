@@ -345,31 +345,30 @@ pgro_shmem_shutdown(int code, Datum arg)
 
 
 /*
- * Module load callback
+ * Module load callback.
+ *
+ * Loading via shared_preload_libraries is required to ensure that hooks
+ * are installed in every postgres process.  Without this, only the backend
+ * that called LOAD would enforce read-only mode, defeating the purpose of
+ * cluster-wide protection.
+ *
+ * process_shared_preload_libraries_in_progress is available since PG 9.4,
+ * which covers all validated versions (9.5+).
  */
 void
 _PG_init(void)
 {
 
-	const char *shared_preload_libraries_config;
-        char *pg_readonly;
-
 	elog(DEBUG5, "pg_readonly: _PG_init(): entry");
 
-	shared_preload_libraries_config = GetConfigOption("shared_preload_libraries", true, false);
-	pg_readonly = strstr(shared_preload_libraries_config, "pg_readonly");
-	if (pg_readonly == NULL)
+	if (!process_shared_preload_libraries_in_progress)
 	{
-		ereport(WARNING, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                                  errmsg("pg_readonly: pg_readonly is not loaded")));
+		ereport(WARNING,
+				(errmsg("pg_readonly must be loaded via shared_preload_libraries")));
 		pgro_enabled = false;
 	}
 	else
 		pgro_enabled = true;
-
-	if (pgro_enabled)
-		elog(LOG, "pg_readonly:_PG_init(): pg_readonly extension is enabled");
-	else	ereport(LOG, (errmsg("pg_readonly:_PG_init(): pg_readonly is not enabled")));
 
 
 	/*
