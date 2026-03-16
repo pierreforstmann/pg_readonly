@@ -33,8 +33,6 @@
 #include "miscadmin.h"
 #include "storage/procarray.h"
 #include "executor/executor.h"
-#include "nodes/nodeFuncs.h"
-#include "utils/lsyscache.h"
 
 PG_MODULE_MAGIC;
 
@@ -361,6 +359,11 @@ pgro_shmem_shutdown(int code, Datum arg)
  * that called LOAD would enforce read-only mode, defeating the purpose of
  * cluster-wide protection.
  *
+ * pg_readonly should be listed last in shared_preload_libraries.  Hook
+ * chaining means the last-loaded extension runs first.  If another
+ * extension is loaded after pg_readonly, its hooks execute before ours
+ * and can perform writes before we set transaction_read_only.
+ *
  * process_shared_preload_libraries_in_progress is available since PG 9.4,
  * which covers all validated versions (9.5+).
  */
@@ -421,205 +424,53 @@ _PG_fini(void)
 }
 
 
-static bool
-find_functions_in_expr(Node *node, void *context)
-{
-
-    if (node == NULL)
-        return false;
-
-    if (IsA(node, FuncExpr))
-    {
-        FuncExpr *f = (FuncExpr *) node;
-        Oid funcid = f->funcid;
-        char volatile_property;
-
-        const char *fname = get_func_name(funcid);
-        elog(DEBUG5, "Function called: %s (OID %u)", fname, funcid);
-        volatile_property = func_volatile(funcid);
-	if (volatile_property == 'v') {
-		ereport(ERROR, (errmsg("pg_readonly: pgro_exec: invalid statement because cluster is read-only and function %s may write to database", fname)));
-	}
-    }
-
-    return expression_tree_walker(node, find_functions_in_expr, context);
-}
-
-
+/*
+ * Set transaction_read_only for the current transaction via the GUC
+ * machinery.  Using GUC_ACTION_LOCAL means the value is automatically
+ * reverted at transaction end — no manual restore is needed.
+ *
+ * Once set, the user cannot revert to read-write mode within the same
+ * transaction: check_transaction_read_only() in variable.c rejects the
+ * read-only -> read-write transition after the first snapshot is taken.
+ */
 static void
-walk_plan(Plan *plan)
+pgro_set_xact_readonly(void)
 {
-    ListCell *lc;
+	if (XactReadOnly)
+		return;
 
-    if (plan == NULL)
-        return;
-
-    /* Walk targetlist */
-    foreach(lc, plan->targetlist)
-    {
-        TargetEntry *tle = (TargetEntry *) lfirst(lc);
-        find_functions_in_expr((Node *) tle->expr, NULL);
-    }
-
-    /* Recurse into child plans */
-    switch (nodeTag(plan))
-    {
-        case T_Result:
-        {
-            Result *r = (Result *) plan;
-            walk_plan(r->plan.lefttree);
-            break;
-        }
-        case T_SeqScan:
-        case T_IndexScan:
-        case T_IndexOnlyScan:
-            /* no child nodes */
-            break;
-
-        default:
-            /* Generic recursion */
-            if (plan->lefttree)
-                walk_plan(plan->lefttree);
-            if (plan->righttree)
-                walk_plan(plan->righttree);
-            break;
-    }
-}
-
-
-static void
-pgro_exec(QueryDesc *queryDesc, int eflags)
-{
-	char *ops="select";
-	char *opi="insert";
-	char *opu="update";
-	char *opd="delete";
-	char *opo="other";
-	char *op;
-	bool command_is_ro = false;
-	PlannedStmt *plannedstmt = queryDesc->plannedstmt;
-
-	switch (queryDesc->operation)
-	{
-		case CMD_SELECT:
-			op = ops;
-			command_is_ro = true;
-			break;
-		case CMD_INSERT:
-			op = opi;
-			command_is_ro = false;
-			break;
-		case CMD_UPDATE:
-			op = opu;
-			command_is_ro = false;
-			break;
-		case CMD_DELETE:
-			op = opd;
-			command_is_ro = false;
-			break;
-		default:
-			op=opo;
-			command_is_ro = false;
-			break;
-		}
-
-        /* 
-	 * check that called functions may note write to the database
-	 */
-
-	if (pgro_get_readonly_internal() == true && queryDesc->plannedstmt && queryDesc->plannedstmt->planTree)
-	{
-        	walk_plan(queryDesc->plannedstmt->planTree);
-    	}
-
-	/*
-	 * for CTE:
-         * check hasModifyingCTE flag (covers CTEs with INSERT/UPDATE/DELETE)
-        */
-
-	 if (plannedstmt->hasModifyingCTE) {
-		op = opu;
-                command_is_ro = false;
-	 }
-
-	elog(LOG, "pg_readonly: pgro_exec: qd->op %s", op);
-	if (pgro_get_readonly_internal() == true && command_is_ro == false)
-		ereport(ERROR, (errmsg("pg_readonly: pgro_exec: invalid statement because cluster is read-only")));
-
-	if (prev_executor_start_hook)
-                (*prev_executor_start_hook)(queryDesc, eflags);
-	else	standard_ExecutorStart(queryDesc, eflags);
-
+	set_config_option("transaction_read_only", "on",
+					  PGC_USERSET, PGC_S_SESSION,
+					  GUC_ACTION_LOCAL, true, 0, false);
 }
 
 /*
- * Return true if the utility command is read-only (does not modify catalog
- * or user data).  This is a simplified version of the core's static
- * ClassifyUtilityCommandAsReadOnly(), whitelisting only commands that are
- * safe in a read-only environment.
+ * ExecutorStart hook.
+ *
+ * When the cluster is read-only, set transaction_read_only = on via proper
+ * GUC machinery.  The downstream standard_ExecutorStart will then call
+ * ExecCheckXactReadOnly(), which enforces all the read-only checks:
+ * DML blocking, temp table exemptions, modifying CTE detection, etc.
  */
-static bool
-pgro_utility_is_read_only(Node *parsetree)
+static void
+pgro_exec(QueryDesc *queryDesc, int eflags)
 {
-	switch (nodeTag(parsetree))
-	{
-		/* Strictly read-only commands */
-		case T_AlterSystemStmt:
-		case T_CallStmt:
-		case T_CheckPointStmt:
-		case T_ClosePortalStmt:
-		case T_ConstraintsSetStmt:
-		case T_DeallocateStmt:
-		case T_DeclareCursorStmt:
-		case T_DiscardStmt:
-		case T_DoStmt:
-		case T_ExecuteStmt:
-		case T_ExplainStmt:
-		case T_FetchStmt:
-		case T_LoadStmt:
-		case T_PrepareStmt:
-		case T_UnlistenStmt:
-		case T_VariableSetStmt:
-		case T_VariableShowStmt:
-			return true;
+	if (pgro_get_readonly_internal())
+		pgro_set_xact_readonly();
 
-		case T_TransactionStmt:
-			{
-				TransactionStmt *stmt = (TransactionStmt *) parsetree;
-
-				switch (stmt->kind)
-				{
-					case TRANS_STMT_BEGIN:
-					case TRANS_STMT_START:
-					case TRANS_STMT_COMMIT:
-					case TRANS_STMT_ROLLBACK:
-					case TRANS_STMT_SAVEPOINT:
-					case TRANS_STMT_RELEASE:
-					case TRANS_STMT_ROLLBACK_TO:
-					case TRANS_STMT_PREPARE:
-					case TRANS_STMT_COMMIT_PREPARED:
-					case TRANS_STMT_ROLLBACK_PREPARED:
-						return true;
-				}
-				return false;
-			}
-
-		case T_LockStmt:
-			return true;
-
-		/* COPY TO is read-only, COPY FROM is not */
-		case T_CopyStmt:
-			return !((CopyStmt *) parsetree)->is_from;
-
-		default:
-			return false;
-	}
+	if (prev_executor_start_hook)
+		(*prev_executor_start_hook)(queryDesc, eflags);
+	else
+		standard_ExecutorStart(queryDesc, eflags);
 }
 
 /*
  * ProcessUtility hook.
  *
- * Block utility commands that modify catalog or data when cluster is read-only.
+ * When the cluster is read-only, set transaction_read_only = on via proper
+ * GUC machinery.  The downstream standard_ProcessUtility uses
+ * ClassifyUtilityCommandAsReadOnly() + PreventCommandIfReadOnly() to block
+ * DDL and other write commands — no custom whitelist needed.
  */
 static void
 pgro_utility(PlannedStmt *pstmt, const char *queryString,
@@ -629,14 +480,8 @@ pgro_utility(PlannedStmt *pstmt, const char *queryString,
 			 QueryEnvironment *queryEnv,
 			 DestReceiver *dest, QueryCompletion *qc)
 {
-	if (pgro_get_readonly_internal() &&
-		!pgro_utility_is_read_only(pstmt->utilityStmt))
-	{
-		ereport(ERROR,
-				(errcode(ERRCODE_READ_ONLY_SQL_TRANSACTION),
-				 errmsg("pg_readonly: %s is not allowed because cluster is read-only",
-						CreateCommandName(pstmt->utilityStmt))));
-	}
+	if (pgro_get_readonly_internal())
+		pgro_set_xact_readonly();
 
 	if (prev_process_utility_hook)
 		(*prev_process_utility_hook)(pstmt, queryString, readOnlyTree,

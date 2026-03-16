@@ -24,7 +24,7 @@ select * from t;
 insert into t values (1);
 
 select f(1);
--- However, in this same session, if you call f() before entering in read only mode, 
+-- However, in this same session, if you call f() before entering in read only mode,
 -- it is then able to write during read only mode:
 
 select unset_cluster_readonly();
@@ -56,3 +56,4 @@ select * from t;
 -- Large object creation: lo_create() is a SELECT-callable function that
 -- writes to the pg_largeobject catalog internally.
 SELECT lo_create(0);
+
