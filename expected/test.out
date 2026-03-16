@@ -41,9 +41,7 @@ select * from t;
 insert into t values (1);
 ERROR:  pg_readonly: pgro_exec: invalid statement because cluster is read-only
 select f(1);
-ERROR:  pg_readonly: pgro_exec: invalid statement because cluster is read-only
-CONTEXT:  SQL statement "insert into t(i) values (f.p) returning t.i"
-PL/pgSQL function f(integer) line 3 at SQL statement
+ERROR:  pg_readonly: pgro_exec: invalid statement because cluster is read-only and function f may write to database
 -- However, in this same session, if you call f() before entering in read only mode, 
 -- it is then able to write during read only mode:
 select unset_cluster_readonly();
@@ -67,9 +65,7 @@ select set_cluster_readonly();
 insert into t values (2);
 ERROR:  pg_readonly: pgro_exec: invalid statement because cluster is read-only
 select f(2);
-ERROR:  pg_readonly: pgro_exec: invalid statement because cluster is read-only
-CONTEXT:  SQL statement "insert into t(i) values (f.p) returning t.i"
-PL/pgSQL function f(integer) line 3 at SQL statement
+ERROR:  pg_readonly: pgro_exec: invalid statement because cluster is read-only and function f may write to database
 select get_cluster_readonly();
  get_cluster_readonly 
 ----------------------
@@ -77,9 +73,7 @@ select get_cluster_readonly();
 (1 row)
 
 select f(3);
-ERROR:  pg_readonly: pgro_exec: invalid statement because cluster is read-only
-CONTEXT:  SQL statement "insert into t(i) values (f.p) returning t.i"
-PL/pgSQL function f(integer) line 3 at SQL statement
+ERROR:  pg_readonly: pgro_exec: invalid statement because cluster is read-only and function f may write to database
 select * from t;
  i 
 ---
@@ -111,8 +105,4 @@ select * from t;
 -- Large object creation: lo_create() is a SELECT-callable function that
 -- writes to the pg_largeobject catalog internally.
 SELECT lo_create(0);
- lo_create 
------------
-     16393
-(1 row)
-
+ERROR:  pg_readonly: pgro_exec: invalid statement because cluster is read-only and function lo_create may write to database

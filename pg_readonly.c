@@ -33,6 +33,8 @@
 #include "miscadmin.h"
 #include "storage/procarray.h"
 #include "executor/executor.h"
+#include "nodes/nodeFuncs.h"
+#include "utils/lsyscache.h"
 
 PG_MODULE_MAGIC;
 
@@ -418,6 +420,73 @@ _PG_fini(void)
 	elog(DEBUG5, "pg_readonly: _PG_fini(): exit");
 }
 
+
+static bool
+find_functions_in_expr(Node *node, void *context)
+{
+
+    if (node == NULL)
+        return false;
+
+    if (IsA(node, FuncExpr))
+    {
+        FuncExpr *f = (FuncExpr *) node;
+        Oid funcid = f->funcid;
+        char volatile_property;
+
+        const char *fname = get_func_name(funcid);
+        elog(DEBUG5, "Function called: %s (OID %u)", fname, funcid);
+        volatile_property = func_volatile(funcid);
+	if (volatile_property == 'v') {
+		ereport(ERROR, (errmsg("pg_readonly: pgro_exec: invalid statement because cluster is read-only and function %s may write to database", fname)));
+	}
+    }
+
+    return expression_tree_walker(node, find_functions_in_expr, context);
+}
+
+
+static void
+walk_plan(Plan *plan)
+{
+    ListCell *lc;
+
+    if (plan == NULL)
+        return;
+
+    /* Walk targetlist */
+    foreach(lc, plan->targetlist)
+    {
+        TargetEntry *tle = (TargetEntry *) lfirst(lc);
+        find_functions_in_expr((Node *) tle->expr, NULL);
+    }
+
+    /* Recurse into child plans */
+    switch (nodeTag(plan))
+    {
+        case T_Result:
+        {
+            Result *r = (Result *) plan;
+            walk_plan(r->plan.lefttree);
+            break;
+        }
+        case T_SeqScan:
+        case T_IndexScan:
+        case T_IndexOnlyScan:
+            /* no child nodes */
+            break;
+
+        default:
+            /* Generic recursion */
+            if (plan->lefttree)
+                walk_plan(plan->lefttree);
+            if (plan->righttree)
+                walk_plan(plan->righttree);
+            break;
+    }
+}
+
+
 static void
 pgro_exec(QueryDesc *queryDesc, int eflags)
 {
@@ -454,14 +523,23 @@ pgro_exec(QueryDesc *queryDesc, int eflags)
 			break;
 		}
 
+        /* 
+	 * check that called functions may note write to the database
+	 */
+
+	if (pgro_get_readonly_internal() == true && queryDesc->plannedstmt && queryDesc->plannedstmt->planTree)
+	{
+        	walk_plan(queryDesc->plannedstmt->planTree);
+    	}
+
 	/*
 	 * for CTE:
-     * check hasModifyingCTE flag (covers CTEs with INSERT/UPDATE/DELETE)
-     */
+         * check hasModifyingCTE flag (covers CTEs with INSERT/UPDATE/DELETE)
+        */
 
 	 if (plannedstmt->hasModifyingCTE) {
 		op = opu;
-        command_is_ro = false;
+                command_is_ro = false;
 	 }
 
 	elog(LOG, "pg_readonly: pgro_exec: qd->op %s", op);
