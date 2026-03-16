@@ -503,7 +503,6 @@ pgro_utility_is_read_only(Node *parsetree)
 		case T_UnlistenStmt:
 		case T_VariableSetStmt:
 		case T_VariableShowStmt:
-		case T_WaitStmt:
 			return true;
 
 		case T_TransactionStmt:
