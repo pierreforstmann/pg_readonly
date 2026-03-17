@@ -39,10 +39,12 @@ select * from t;
 (0 rows)
 
 insert into t values (1);
-ERROR:  pg_readonly: pgro_exec: invalid statement because cluster is read-only
+ERROR:  cannot execute INSERT in a read-only transaction
 select f(1);
-ERROR:  pg_readonly: pgro_exec: invalid statement because cluster is read-only and function f may write to database
--- However, in this same session, if you call f() before entering in read only mode, 
+ERROR:  cannot execute INSERT in a read-only transaction
+CONTEXT:  SQL statement "insert into t(i) values (f.p) returning t.i"
+PL/pgSQL function f(integer) line 3 at SQL statement
+-- However, in this same session, if you call f() before entering in read only mode,
 -- it is then able to write during read only mode:
 select unset_cluster_readonly();
  unset_cluster_readonly 
@@ -63,9 +65,11 @@ select set_cluster_readonly();
 (1 row)
 
 insert into t values (2);
-ERROR:  pg_readonly: pgro_exec: invalid statement because cluster is read-only
+ERROR:  cannot execute INSERT in a read-only transaction
 select f(2);
-ERROR:  pg_readonly: pgro_exec: invalid statement because cluster is read-only and function f may write to database
+ERROR:  cannot execute INSERT in a read-only transaction
+CONTEXT:  SQL statement "insert into t(i) values (f.p) returning t.i"
+PL/pgSQL function f(integer) line 3 at SQL statement
 select get_cluster_readonly();
  get_cluster_readonly 
 ----------------------
@@ -73,7 +77,9 @@ select get_cluster_readonly();
 (1 row)
 
 select f(3);
-ERROR:  pg_readonly: pgro_exec: invalid statement because cluster is read-only and function f may write to database
+ERROR:  cannot execute INSERT in a read-only transaction
+CONTEXT:  SQL statement "insert into t(i) values (f.p) returning t.i"
+PL/pgSQL function f(integer) line 3 at SQL statement
 select * from t;
  i 
 ---
@@ -81,7 +87,7 @@ select * from t;
 (1 row)
 
 with inserted as (insert into t values(3) returning 3) select * from inserted;
-ERROR:  pg_readonly: pgro_exec: invalid statement because cluster is read-only
+ERROR:  cannot execute SELECT in a read-only transaction
 select * from t;
  i 
 ---
@@ -90,10 +96,10 @@ select * from t;
 
 -- DDL is also blocked via ProcessUtility hook
 CREATE TABLE t2(i int);
-ERROR:  pg_readonly: CREATE TABLE is not allowed because cluster is read-only
+ERROR:  cannot execute CREATE TABLE in a read-only transaction
 -- DO block: INSERT inside a DO block should be blocked by the executor hook
 DO $$ BEGIN INSERT INTO t VALUES (99); END $$;
-ERROR:  pg_readonly: pgro_exec: invalid statement because cluster is read-only
+ERROR:  cannot execute INSERT in a read-only transaction
 CONTEXT:  SQL statement "INSERT INTO t VALUES (99)"
 PL/pgSQL function inline_code_block line 1 at SQL statement
 select * from t;
@@ -105,4 +111,5 @@ select * from t;
 -- Large object creation: lo_create() is a SELECT-callable function that
 -- writes to the pg_largeobject catalog internally.
 SELECT lo_create(0);
-ERROR:  pg_readonly: pgro_exec: invalid statement because cluster is read-only and function lo_create may write to database
+ERROR:  cannot execute lo_create() in a read-only transaction
+
