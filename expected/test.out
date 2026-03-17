@@ -112,4 +112,3 @@ select * from t;
 -- writes to the pg_largeobject catalog internally.
 SELECT lo_create(0);
 ERROR:  cannot execute lo_create() in a read-only transaction
-
