@@ -33,6 +33,7 @@
 #include "miscadmin.h"
 #include "storage/procarray.h"
 #include "executor/executor.h"
+#include "optimizer/optimizer.h"
 
 PG_MODULE_MAGIC;
 
@@ -444,6 +445,32 @@ pgro_set_xact_readonly(void)
 					  GUC_ACTION_LOCAL, true, 0, false);
 }
 
+#if PG_VERSION_NUM < 160000
+/*
+ * Recursively walk a plan tree looking for volatile functions in
+ * targetlists and quals.  Throws an error if any are found.
+ */
+static void
+walk_plan(Plan *plan)
+{
+	if (plan == NULL)
+		return;
+
+	if (contain_volatile_functions((Node *) plan->targetlist))
+		ereport(ERROR,
+				(errmsg("pg_readonly: cannot execute query containing "
+						"volatile functions because cluster is read-only")));
+
+	if (contain_volatile_functions((Node *) plan->qual))
+		ereport(ERROR,
+				(errmsg("pg_readonly: cannot execute query containing "
+						"volatile functions because cluster is read-only")));
+
+	walk_plan(plan->lefttree);
+	walk_plan(plan->righttree);
+}
+#endif
+
 /*
  * ExecutorStart hook.
  *
@@ -456,7 +483,18 @@ static void
 pgro_exec(QueryDesc *queryDesc, int eflags)
 {
 	if (pgro_get_readonly_internal())
+	{
 		pgro_set_xact_readonly();
+#if PG_VERSION_NUM < 160000
+		/*
+		 * Block SELECT-callable volatile functions that could write to the
+		 * database (e.g., lo_create()).  transaction_read_only does not
+		 * prevent these.
+		 */
+		if (queryDesc->plannedstmt && queryDesc->plannedstmt->planTree)
+			walk_plan(queryDesc->plannedstmt->planTree);
+#endif
+	}
 
 	if (prev_executor_start_hook)
 		(*prev_executor_start_hook)(queryDesc, eflags);
