@@ -83,9 +83,9 @@ static void pgro_utility(PlannedStmt *pstmt, const char *queryString,
 						 QueryEnvironment *queryEnv,
 						 DestReceiver *dest, QueryCompletion *qc);
 
-static bool pgro_set_readonly_internal();
-static bool pgro_unset_readonly_internal();
-static bool pgro_get_readonly_internal();
+static bool pgro_set_readonly_internal(void);
+static bool pgro_unset_readonly_internal(void);
+static bool pgro_get_readonly_internal(void);
 
 PG_FUNCTION_INFO_V1(pgro_set_readonly);
 PG_FUNCTION_INFO_V1(pgro_unset_readonly);
@@ -96,7 +96,7 @@ PG_FUNCTION_INFO_V1(pgro_get_readonly);
  * set cluster databases to read-only
  */
 
-static bool pgro_set_readonly_internal()
+static bool pgro_set_readonly_internal(void)
 {
 
 	VirtualTransactionId *tvxid;
@@ -145,7 +145,7 @@ static bool pgro_set_readonly_internal()
  * set cluster databases to read write
  */
 
-static bool pgro_unset_readonly_internal()
+static bool pgro_unset_readonly_internal(void)
 {
 	LWLockAcquire(pgro->lock, LW_EXCLUSIVE);
 	pgro->cluster_is_readonly = false;
@@ -159,7 +159,7 @@ static bool pgro_unset_readonly_internal()
  * read-write status
  */
 
-static bool pgro_get_readonly_internal()
+static bool pgro_get_readonly_internal(void)
 {
 	bool val;
 
