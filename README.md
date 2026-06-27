@@ -47,7 +47,7 @@ You need to set `shared_preload_libraires` for this instance (see above):
 `make installcheck`<br>
 
 ## Validated PostgreSQL versions
-This extension has been validated with PostgreSQL 9.5, 9.6, 10, 11, 12, 13, 14, 15, 16, 17 and 18.
+This extension has been validated with PostgreSQL 9.5, 9.6, 10, 11, 12, 13, 14, 15, 16, 17, 18 and 19 beta 1.
 
 ## Usage
 pg_readonly has no specific GUC. <br><br>
